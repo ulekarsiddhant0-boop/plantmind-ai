@@ -1,16 +1,17 @@
 import streamlit as st
-from pypdf import PdfReader
-import google.generativeai as genai
-from dotenv import load_dotenv
-import os
 
-load_dotenv()
-
-genai.configure(
-    api_key=os.getenv("GEMINI_API_KEY")
+from src.pdf_processor import extract_text_from_pdf
+from src.llm import model
+from src.rag import (
+    chunk_text,
+    create_index,
+    retrieve,
 )
-
-model = genai.GenerativeModel("gemini-2.5-flash")
+from src.prompts import (
+    summary_prompt,
+    rag_question_prompt,
+    incident_prompt,
+)
 
 st.set_page_config(page_title="PlantMind AI")
 
@@ -22,32 +23,27 @@ uploaded_file = st.file_uploader(
     type=["pdf"]
 )
 
+document_text = ""
+chunks = []
+index = None
+
 if uploaded_file:
 
-    reader = PdfReader(uploaded_file)
+    document_text = extract_text_from_pdf(uploaded_file)
 
-    document_text = ""
+    chunks = chunk_text(document_text)
 
-    for page in reader.pages:
-        text = page.extract_text()
-
-        if text:
-            document_text += text
+    index, chunks = create_index(chunks)
 
     st.success("Document processed successfully!")
 
     if st.button("Generate Summary"):
 
-        summary_prompt = f"""
-        Summarize this industrial document in simple bullet points:
-
-        {document_text}
-        """
-
-        summary = model.generate_content(summary_prompt)
+        summary = model.generate_content(
+            summary_prompt(document_text)
+        )
 
         st.subheader("Document Summary")
-
         st.write(summary.text)
 
     question = st.text_input(
@@ -56,26 +52,26 @@ if uploaded_file:
 
     if question:
 
-        prompt = f"""
-        You are an industrial knowledge assistant.
+        retrieved_chunks = retrieve(
+            question,
+            index,
+            chunks
+        )
 
-        Use only the information below.
+        context = "\n\n".join(retrieved_chunks)
 
-        DOCUMENT:
-        {document_text}
-
-        QUESTION:
-        {question}
-
-        ANSWER:
-        """
-
-        response = model.generate_content(prompt)
+        response = model.generate_content(
+            rag_question_prompt(
+                context,
+                question
+            )
+        )
 
         st.subheader("Answer")
-
         st.write(response.text)
-        # INCIDENT ANALYSIS
+
+        with st.expander("Retrieved Context"):
+            st.write(context)
 
 st.subheader("Incident Analysis")
 
@@ -85,26 +81,24 @@ incident = st.text_area(
 
 if st.button("Analyze Incident"):
 
-    incident_prompt = f"""
-    You are an industrial safety expert.
+    if not document_text:
+        st.warning(
+            "Please upload a PDF before analyzing an incident."
+        )
 
-    Based on the uploaded document:
+    elif not incident.strip():
+        st.warning(
+            "Please describe the incident."
+        )
 
-    {document_text}
+    else:
 
-    Analyze the following incident:
+        result = model.generate_content(
+            incident_prompt(
+                document_text,
+                incident
+            )
+        )
 
-    {incident}
-
-    Provide:
-
-    1. Possible Causes
-    2. Risks
-    3. Recommended Actions
-    """
-
-    result = model.generate_content(
-        incident_prompt
-    )
-
-    st.write(result.text)
+        st.subheader("Incident Analysis Result")
+        st.write(result.text)
