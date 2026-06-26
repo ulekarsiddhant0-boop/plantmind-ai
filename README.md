@@ -48,7 +48,6 @@
 | <b>📄 Upload PDF</b> | <b>❓ Ask Questions</b> | <b>⚠️ Incident Analysis</b> |
 | Upload any industrial PDF and get an AI-generated summary instantly | Ask natural language questions and get context-aware answers | Investigate incidents using document-grounded knowledge |
 
-> 📸 *Replace placeholder images with real screenshots from `assets/` folder*
 
 </div>
 
